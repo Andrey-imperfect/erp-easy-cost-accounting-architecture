@@ -1,0 +1,27 @@
+MODULE FCProjects;
+
+REQUIRE Utils, System, FCEmployees, FCFunctionalAreas;
+
+CLASS Project 'Project';
+
+//Properties of #Project:
+title 'Project title' = DATA STRING[31](Project);
+
+//functionalArea = DATA FunctionalArea(Project);
+//functionalAreaName 'Functional Area' = name(functionalArea(Project));
+
+currentManager 'Manager' = DATA Employee(Project);
+currentManagerName 'Manager' = name(currentManager(Project));
+
+description 'Description' = DATA STRING[75](Project);
+
+orderN 'Order' = DATA NUMERIC[3,0](Project);
+
+// Forms for #Project:
+FORM projectForm '5. Projects' // #Project main form
+    OBJECTS p = Project
+    PROPERTIES (p) title, currentManagerName, description, orderN, NEW, DELETE // , functionalAreaName,
+    ORDERS orderN(p)
+    
+    LIST Project OBJECT p
+;

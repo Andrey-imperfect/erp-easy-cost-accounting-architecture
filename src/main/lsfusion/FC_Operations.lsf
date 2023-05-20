@@ -1,0 +1,24 @@
+MODULE FCOperations;
+
+REQUIRE Utils, System, FCFunctionalAreas;
+
+CLASS Operation 'Operation' {
+    Empty '(Empty)'       // There is a pre-set operaion "Empty". Other operations could be created with UI
+}
+
+//Properties of #Operation:
+name 'Operation' (Operation o) = BPSTRING[20](staticCaption(o)) IF o IS Operation; 
+
+//functionalArea = DATA FunctionalArea(Operation);
+//functionalAreaName 'Functional Area' = name(functionalArea(Operation));
+
+orderN 'Order' = DATA NUMERIC[3,0](Operation);
+
+// Forms for #Operation:
+FORM operationForm '4. Operations (Activity types)' // #Operation main form
+    OBJECTS o = Operation
+    PROPERTIES (o) name, orderN, NEW, DELETE // , functionalAreaName,
+    ORDERS orderN(o)
+    
+    LIST Operation OBJECT o
+;

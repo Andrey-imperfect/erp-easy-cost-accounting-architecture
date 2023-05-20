@@ -1,0 +1,23 @@
+MODULE FCCostCenterComposition;
+
+REQUIRE Utils, System, FCCostCenters, FCEmployees;
+
+CLASS CostCenterComposition 'Employee movement ledger';
+
+//Properties of #CostCenterComposition:
+date 'date' = DATA DATE(CostCenterComposition);
+
+employee = DATA Employee(CostCenterComposition);
+employeeName 'Employee' = name(employee(CostCenterComposition));
+
+costCenter = DATA CostCenter(CostCenterComposition);
+costCenterName 'Workplace' = name(costCenter(CostCenterComposition));
+
+//job 'Position' = DATA STRING[48](CostCenterComposition);
+
+// UI Forms for #CostCenterComposition:
+FORM costCenterCompositionForm 'CostCenterComposition' // #Employee main form
+    OBJECTS c = CostCenterComposition
+    PROPERTIES (c) date, employeeName, costCenterName, NEW, DELETE
+    ORDERS date(c)
+;
