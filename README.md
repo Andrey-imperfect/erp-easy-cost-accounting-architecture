@@ -33,7 +33,10 @@ How to install and run the LsFusion Programming Language:
 10. In file conf/setting.properties, specify address of your local infrastructure data (DB server) and also you may specify DB username / DB  password / DB name / LsFusion server port / LsFusion admin user password. 
 Plese, pay attention that LsFusion platform will automatically create database after the first run.
 
-12. To run the product:
+11. To run the product:
+
       11.1. Run Apache Tomcat
+
       11.2. Run the project within IntelliJ IDEA
+
       11.3. Open file lsfusion-client-5.0.jar
