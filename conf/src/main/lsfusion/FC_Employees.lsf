@@ -1,0 +1,25 @@
+// !! THE RESTRICTION OF THE PUBLIC SOURCE CODE VERSION:
+// Here "Current workplace" is filled manually
+// Instead of that, it should be calculated automatically from the CostCenterComposition ledger
+
+MODULE FCEmployees;
+
+REQUIRE Utils, System, FCCostCenters;
+
+CLASS Employee 'Employee';
+
+//Properties of #Employee:
+name 'Name' = DATA STRING[75](Employee);
+orderN 'Order' = DATA NUMERIC[3,0](Employee);
+
+currentWorkplace = DATA CostCenter(Employee);
+currentWorkplaceName 'Current workplace (in this version, set up manually pls)' = name(currentWorkplace(Employee)); 
+
+// UI Forms for #Employee:
+FORM employeeForm '2. Employees' // #Employee main form
+    OBJECTS e = Employee
+    PROPERTIES (e) name, orderN, NEW, DELETE
+    ORDERS orderN(e)
+    
+    LIST Employee OBJECT e
+;
