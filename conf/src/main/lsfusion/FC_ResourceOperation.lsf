@@ -1,0 +1,127 @@
+// The module containing most of the cost calculations
+
+MODULE FCResourceOperation;
+
+REQUIRE Utils, System, FCCostCenters, FCOperations, FCSpecification, FCEmployees, FCProjects, FCOperationPerformance, FCMeasure;
+
+
+
+// CLASS for detailation of resource consumption by operations
+CLASS ResourceConsumption 'Resource in operations consumption'; 
+
+rtConsumptionSpec1 'R amount' (ResourceType t, OperationPerformancePosition o) = hours(o) * (GROUP SUM resourceVolume(SpecificationPosition s) IF specification(o) = specification(s) AND resourceType(s) = t) MATERIALIZED;
+rtConsumptionSpec2 'R amount' (ResourceType t, OperationPerformancePosition o) = hours(o) * 1;
+rtConsumptionSpec 'R amount' (ResourceType t, OperationPerformancePosition o) = EXCLUSIVE
+    rtConsumptionSpec1(t, o) IF NOT manualEmpties(t), 
+    rtConsumptionSpec2(t, o) IF manualEmpties(t)
+;
+
+//THEN WE DEFINE A RESOURCE. Define an appropriate resource consumed in the each line:
+//  1. if the resource is localized at this cost center:
+resourceLocalized(ResourceType t, OperationPerformancePosition o) = EXCLUSIVE
+    GROUP LAST(Resource r) ORDER name(r) WHERE currentLocation(r) = costCenter(o) AND used(r) AND type(r) = t   
+;
+//  2. if the resource is shared (generally accessed):
+resourceAccecced(ResourceType t, OperationPerformancePosition o) = GROUP LAST(Resource r) ORDER name(r) WHERE used(r) AND type(r) = t;
+
+resource (ResourceType rt, OperationPerformancePosition o) = EXCLUSIVE
+    resourceLocalized(rt, o) IF localizationType(rt) = LocalizationType.localized,
+    resourceAccecced(rt, o) IF localizationType(rt) = LocalizationType.generallyAccessed
+;
+resourceName 'Resource' (ResourceType t, OperationPerformancePosition o) = name(resource(t, o));
+
+//Resource*Month = Total output (by specification)
+rOutputSpec 'R output (by BoR)' (Resource r, CustomMonth m) = GROUP SUM rtConsumptionSpec(ResourceType t, OperationPerformancePosition o) IF t = type(r) AND customMonth(o) = m;
+rOutputSpec 'R output (by BoR)' (ResourceType rt, OperationPerformancePosition o) = rOutputSpec(resource(rt, o), customMonth(o));
+standardCapacity 'R st cap' (ResourceType rt, OperationPerformancePosition o) = standardCapacity(resource(rt, o));
+
+rOutput 'R output' (ResourceType rt, OperationPerformancePosition o) = EXCLUSIVE 
+    rOutputSpec(rt, o) IF rOutputSpec(rt, o) >= standardCapacity(rt, o) OR NOT standardCapacity(rt, o),
+    standardCapacity(rt, o) IF rOutputSpec(rt, o) < standardCapacity(rt, o)
+;
+
+//THEN WE DEFINE EMPTIES. If the empties should be defined manually for the resource(for ex., that's actual for labor) or calculated with Capacity, the behavior will be different.
+emptiesManual (Resource r, CustomMonth m) = GROUP SUM hours(OperationPerformancePosition o) IF operation(o) = Operation.Empty;
+emptiesManual(OperationPerformancePosition o) = GROUP SUM hours(o) IF operation(o) = Operation.Empty;
+// note: the following value is actually defined within the month!
+emptiesCalc(ResourceType rt, OperationPerformancePosition o) = EXCLUSIVE
+    standardCapacity(rt, o) - rOutputSpec(rt, o) IF standardCapacity(rt, o) > rOutputSpec(rt, o),
+    0 IF standardCapacity(rt, o) < rOutputSpec(rt, o) OR NOT standardCapacity(rt, o) OR NOT rOutputSpec(rt, o)
+;
+empty(ResourceType rt, OperationPerformancePosition o) = EXCLUSIVE
+    emptiesManual(o) IF manualEmpties(rt),
+    emptiesCalc(rt, o) IF NOT manualEmpties(rt)
+;
+
+// THEN WE DEFINE THE PHYSICAL SHARES
+shareOperationPositionR (ResourceType t, OperationPerformancePosition o) = rtConsumptionSpec(t, o) / rOutput (t, o) ;
+
+// NOW WE HAVETO DEFINE EMPTIES AND RELATED INFORMATION
+rConsumptionSpec 'R consumption in O (by BoR)' (Resource r, Operation o, CustomMonth m) = GROUP SUM rtConsumptionSpec(ResourceType t, OperationPerformancePosition p) IF r = resource(t, p) AND customMonth(p) = m AND operation(p) = o;
+
+//FOR ALL RESOURCES:  //IF FIXED (WITH CAPACITY) OF SEMI-VARIABLE (WITHOUT CAPACITY) AND OTHERS:
+rProductiveOutputSpec 'Total output (by BoR)' (Resource r, CustomMonth m) = GROUP SUM rtConsumptionSpec(ResourceType t, OperationPerformancePosition p) IF r = resource(t, p) AND customMonth(p) = m AND NOT operation(p) = Operation.Empty;
+rProductiveOutput 'Productive output' (Resource r, CustomMonth m) = EXCLUSIVE
+    rProductiveOutputSpec(r ,m) IF NOT rProductiveOutputSpec(r, m) > factOutput(r ,m) ,
+    factOutput(r, m) IF rProductiveOutputSpec(r, m) > factOutput(r ,m)  
+;
+rEmpties1 (Resource r, CustomMonth m) = GROUP SUM rtConsumptionSpec(ResourceType t, OperationPerformancePosition p) IF r = resource(t, p) AND m = customMonth(p) AND manualEmpties(t) AND operation(p) = Operation.Empty;;
+rEmpties2 (Resource r, CustomMonth m) = standardCapacity(r) - rProductiveOutputSpec(r, m) IF NOT manualEmpties(type(r)) AND standardCapacity(r) > rProductiveOutputSpec(r, m);
+rEmpties 'Empties' (Resource r, CustomMonth m) = EXCLUSIVE
+    rEmpties1(r, m) IF manualEmpties(type(r)),  
+    rEmpties2(r, m) IF  NOT manualEmpties(type(r))
+;
+
+rTotalOutput 'Total output (corrected)' (Resource r, CustomMonth m) = rProductiveOutput(r, m) (+) rEmpties(r, m);
+
+// The following values are needed for UI forms:
+resTypeName (Resource r)= name(type(r));
+orderType (Resource r) = orderN(type(r));
+resourcePlaceN (Resource r) = orderN(currentLocation(r));
+
+// THEN WE DEFINE THE CORRECTED RESOURCE CONSUMPTION
+rConsumptionCorr 'R amount corr' (ResourceType t, OperationPerformancePosition o) = OVERRIDE
+    rtConsumptionSpec(t, o) / rOutputSpec (t, o) * (GROUP SUM rTotalOutput(Resource r, CustomMonth m) IF resource(t, o) = r AND customMonth(o) = m) IF rProductiveOutputSpec((resource(t, o)) , customMonth(o)) > factOutput((resource(t, o)) , customMonth(o)),
+    rtConsumptionSpec(t, o) IF NOT rProductiveOutputSpec((resource(t, o)) , customMonth(o)) > factOutput((resource(t, o)) , customMonth(o))
+;
+
+share 'R share' (ResourceType t, OperationPerformancePosition o) = rConsumptionCorr(t, o) / GROUP SUM rTotalOutput(Resource r, CustomMonth m) IF resource(t, o) = r AND customMonth(o) = m;
+//shareVis 
+cost 'Cost' (ResourceType t, OperationPerformancePosition o) = share(t, o) * GROUP SUM sum(ResourceMonthCost c) IF resource(c) = resource(t, o) AND month(c) = customMonth(o);
+costRound 'Cost' (ResourceType t, OperationPerformancePosition o) = NUMERIC[40,2](cost(t, o)); //округленное Cost
+
+// RESOURCE * OPERATION * MONTH
+outputSpec(Resource r, Operation o, CustomMonth m) = EXCLUSIVE
+    (GROUP SUM rtConsumptionSpec(ResourceType t, OperationPerformancePosition p) IF customMonth(p) = m AND resource(t, p) = r AND operation(p) = o AND NOT o = Operation.Empty) IF NOT o = Operation.Empty,
+    rEmpties(r, m) IF o = Operation.Empty
+;
+
+// UI Forms for indicatioin of the calculations:
+FORM resourceTypeConsumption '1. Resource consumption physical (by BoR)' //
+    OBJECTS (t = ResourceType, o = OperationPerformancePosition)
+    PROPERTIES  READONLY customMonthName(o),  'R (resource)' = resourceName(t, o), 'R type' = name(t),  rtConsumptionSpec(t, o),  'O (operation)' = operationName(o), 'O amount' = hours(o), 'CC' = costCenterName(o), 'CC-consumer' = costCenterConsumerName(o), projectConsumerName(o), 'Technology' = specificationNumber(o), 'Operation report N' = reportN(o), description(o)//, rConsumptionCorr(t, o), share(t, o), cost(t, o), rOutputSpec(t, o), standardCapacity(t, o), rOutput(t, o), empty (t, o), 'O share' = shareOperationPositionR(t, o)
+    FILTERS rtConsumptionSpec(t, o), (actual(specification(o)) OR operation(o) = Operation.Empty)
+;
+
+FORM resourceEmpties '2. Resource total output physical' //
+    OBJECTS (r = Resource, m = CustomMonth)
+    PROPERTIES  READONLY 'Month' = name(m), orderN(m) SHOWIF 1>2, 'Resource' = name(r), resourcePlaceN(r) SHOWIF 1>2, 'O order' = orderType(r) SHOWIF 1>2, rProductiveOutputSpec(r, m), 'Stndrd capacity' = standardCapacityName(r), rEmpties(r, m), rTotalOutput(r, m) // 'Localization' = currentLocationName(r), 'R type' = resTypeName(r), 
+    FILTERS  rProductiveOutputSpec(r, m) OR (standardCapacity(r) AND used(r))
+    ORDERS orderN(m), resourcePlaceN(r), orderType(r) // currentLocationName(r), 
+    
+    OBJECTS (re = Resource, mo = CustomMonth, op = Operation, c = CostCenter)
+    PROPERTIES  'O (operation)' = name(op),  'O order' = orderN(op) SHOWIF 1>2, rConsumptionSpec(re, op, mo)
+    FILTERS re = r, rConsumptionSpec(re, op, mo), mo = m
+;
+
+FORM resourceTypeConsumptionCorr '3. Resource consumption physical (corrected)' //
+    OBJECTS (t = ResourceType, o = OperationPerformancePosition)
+    PROPERTIES  READONLY customMonthName(o),  'R (resource)' = resourceName(t, o), 'O (operation)' = operationName(o), 'O amount' = hours(o), 'CC' = costCenterName(o), 'CC-consumer' = costCenterConsumerName(o), projectConsumerName(o), 'technology' = specificationNumber(o), 'Operation report N' = reportN(o), 'R amount (by BoR)' = rtConsumptionSpec(t, o),  'R amount (corr)' = rConsumptionCorr(t, o),  share (t, o) //, rOutputSpec(t, o), standardCapacity(t, o), rOutput(t, o), empty (t, o), 'O share' = shareOperationPositionR(t, o)
+    FILTERS rtConsumptionSpec(t, o), (actual(specification(o)) OR operation(o) = Operation.Empty)
+;
+
+FORM resourceConsumptionCosting '4. COSTS ALLOCATED' // !!! THE FINAL RESULT OF USING THE SOFTWARE
+    OBJECTS (t = ResourceType, o = OperationPerformancePosition)
+    PROPERTIES  READONLY customMonthName(o),  'R (resource)' = resourceName(t, o), 'R type' = name(t),  rtConsumptionSpec(t, o),  'O (operation)' = operationName(o), 'O amount' = hours(o), 'CC' = costCenterName(o), 'CC - consumer' = costCenterConsumerName(o), projectConsumerName(o), rConsumptionCorr(t, o), share(t, o), costRound(t, o)//, rOutputSpec(t, o), standardCapacity(t, o), rOutput(t, o), empty (t, o), 'O share' = shareOperationPositionR(t, o), 'Operation report N' = reportN(o),'technology' specificationNumber(o), description(o), 
+    FILTERS rtConsumptionSpec(t, o), (actual(specification(o)) OR operation(o) = Operation.Empty)
+;
