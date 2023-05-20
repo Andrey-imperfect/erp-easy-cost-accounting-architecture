@@ -8,8 +8,8 @@ The new architecture example for cost accounting which is
 (3) integrated into the operational ERP layer. 
 
 (4) Besides, the calculation is complicated being adjusted by capacity of resources consumed (respectively to TD ABC cost accounting methodology), however is still transparent for end user and verifiable
-
-
+***********************
+User manual (how to use the software) is provided personally and perhaps will be published here in future.
 ***********************
 The published code is written on "LsFusion" (a programming language specified for business applications compilating into Java).
 ***********************
