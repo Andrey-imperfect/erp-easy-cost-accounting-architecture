@@ -3,7 +3,7 @@ The new architecture example for cost accounting which is
 
 (1) real-time 
 
-(2) providing fully detailed results to end user
+(2) providing fully detailed results
 
 (3) integrated into the operational ERP layer. 
 
