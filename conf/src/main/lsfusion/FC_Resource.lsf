@@ -1,0 +1,94 @@
+MODULE FCResource;
+
+REQUIRE Utils, System, FCFunctionalAreas, FCMeasure, FCCostCenters, FCEmployees;
+
+CLASS LocalizationType 'Localization Type' {
+    localized 'Localized', // regular win
+    generallyAccessed 'Shared' // win in overtime
+}
+name 'Localization type' (LocalizationType t) = staticCaption(t) IF t IS LocalizationType; // StaticCaption is a system property
+
+CLASS ResourceType 'Resource type';
+CLASS Resource 'Resource';
+
+//Properties of #ResourceType:
+name 'Resource type' = DATA STRING[19](ResourceType);
+orderN 'Order' = DATA NUMERIC[3,0](ResourceType);
+//functionalArea = DATA FunctionalArea(ResourceType);
+//functionalAreaName 'Functional area' (ResourceType rt) = name(functionalArea(rt));
+localizationType = DATA LocalizationType(ResourceType);
+localizationTypeName 'Localization type' (ResourceType t) = name(localizationType(t));
+manualEmpties 'Empties measured manually' = DATA BOOLEAN(ResourceType);
+fixed 'Long-term' = DATA BOOLEAN(ResourceType);
+labor 'Labor' = DATA BOOLEAN(ResourceType);
+CONSTRAINT manualEmpties(ResourceType t) AND fixed(t) 
+    CHECKED BY manualEmpties, fixed
+    MESSAGE 'manual empties could not be applied to fixed assets'
+;
+
+// Properties of #Resource
+name 'Resource' = DATA STRING[19] (Resource);
+type 'Type' = DATA ResourceType(Resource);
+typeName 'Type' (Resource r) = name(type(r));
+//worker 'Worker' = DATA Employee(Resource);
+//workerName 'Worker'(Resource r) = name(worker(r));
+standardCapacity = DATA NUMERIC[3,0](Resource);
+standardCapacityString(Resource r) = '—';
+
+standardCapacityName 'Standard capacity, h' (Resource r) = OVERRIDE
+    STRING(standardCapacity(r)) IF fixed(type(r)),
+    standardCapacityString(r)  IF NOT fixed(type(r))
+;
+
+currentLocation = DATA CostCenter(Resource);
+currentLocationName 'Currenct location' (Resource r) = name(currentLocation(r));
+used 'Used' = DATA BOOLEAN(Resource);
+
+usedCount (ResourceType t, CostCenter c) = GROUP SUM 1 IF used(Resource r) BY type(r), currentLocation(r);
+
+CONSTRAINT usedCount (type(Resource r), currentLocation(r)) > 1 CHECKED BY used MESSAGE 'Only one resource of each type can be marked as used in cost center';
+
+orderN 'Order' = DATA NUMERIC[3,0](Resource);
+
+resourcesCount 'Count of resources' (ResourceType t)= GROUP SUM 1 BY type(Resource r);
+
+// CLASS for the indicator: <Total cost of the resource for the month>
+CLASS ResourceMonthCost 'ResourceMonthCost';
+resource = DATA Resource(ResourceMonthCost);
+resourceName 'Resource' (ResourceMonthCost c) = name(resource(c));
+
+month = DATA CustomMonth(ResourceMonthCost);
+monthName 'Month' (ResourceMonthCost c) = name(month(c)); 
+
+costCenterName 'Cost center (location)' (ResourceMonthCost c) = name(currentLocation(resource(c)));
+
+sum 'Sum, $' = DATA INTEGER(ResourceMonthCost);
+factOutput 'Fact output1' = DATA INTEGER(ResourceMonthCost);
+factOutput (Resource r, CustomMonth m) = GROUP SUM factOutput(ResourceMonthCost c) IF resource(c) = r AND month(c) = m;
+
+// UI Forms for #Resource:
+FORM resourceList '3.1. Resources' // #Resource main form
+    OBJECTS r = Resource
+    PROPERTIES(r) name, typeName, standardCapacityName READONLYIF NOT fixed(type(r)), currentLocationName, orderN SHOWIF 1>2, NEW, DELETE //'Resource holder' = workerName, 
+    ORDERS orderN(r)
+;
+FORM resourceList2 '3.1. Resources' // #Resource additional form
+    OBJECTS r = Resource
+    PROPERTIES(r) name, currentLocationName, used, orderN SHOWIF 0>1, NEW, DELETE
+    ORDERS orderN(r)
+    
+    LIST Resource OBJECT r
+;
+
+FORM resourceTypeList '3. Resource Types' // #ResourceType main form
+    OBJECTS t = ResourceType
+    PROPERTIES(t) name, localizationTypeName, labor, manualEmpties, fixed, orderN, resourcesCount, NEW, DELETE // , functionalAreaName,
+    ORDERS orderN(t)
+    
+    LIST ResourceType OBJECT t
+;
+
+FORM resourceMonthCost 'Resource month costs' // #ResourceMonthCost form
+    OBJECTS (c = ResourceMonthCost)
+    PROPERTIES(c) monthName, resourceName, costCenterName, sum, NEW, DELETE
+;
